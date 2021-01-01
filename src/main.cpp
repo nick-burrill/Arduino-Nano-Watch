@@ -12,7 +12,7 @@
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-int app = 2; //Defaults to 0 for clock
+int app = 0; //Defaults to 0 for clock
 int stopwatchTime = 3200;
 
 String tempString = "sample";
