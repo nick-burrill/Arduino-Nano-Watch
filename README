@@ -1,0 +1,8 @@
+This is my Arduino Nano based Watch firmware. The watch is currently planned to be a "dumb" watch with a few extra features.
+
+Here are some planned specs:
+-Real time clock
+-Stopwatch
+-Timer
+-Alarm
+-Counter
