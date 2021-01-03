@@ -15,13 +15,24 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 int app = 0; //Defaults to 0 for clock
 int stopwatchTime = 3200;
 
+// Button values per button:
+// Up = 2, Down = 4, Enter = 8, Escape = 16
+int btnPressed = 0;
+// Add respective value for reach button to be pressed
+// Button pins will be set here aswell
+int pinUp = 10;
+int pinDown = 9;
+int pinEnter = 8;
+int pinEscape = 7;
+
 String tempString = "sample";
 
 void setup() {
     Serial.begin(9600);
     Wire.begin();
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-    Serial.println("Test ping");
+    
+    Serial.println("Setup done.");
 }
 
 void drawClock() {
@@ -127,9 +138,21 @@ void drawStopwatch() {
 void serialInput() {
     if (Serial.available() > 0) {
         tempString = Serial.readString();
-        app = tempString.toInt();
-        Serial.println(app);
+        
+        if (tempString == "up") {
+            Serial.println(tempString);
+
+        }
+        else {
+            app = tempString.toInt();
+            Serial.println(app);
+        }
     }
+}
+
+void buttonInput() {
+    // For now this will be activated by void loop but eventually should be a hardware interupt
+
 }
 
 void loop() {
