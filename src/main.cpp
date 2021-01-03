@@ -91,7 +91,7 @@ void drawStopwatch() {
     display.setCursor(10,0);
     display.println("Stopwatch");
     
-    //Draw the minites counter
+    //Draw the minites counter if LESS than 5599 seconds have gone by
     if (stopwatchTime < ((59 * 60) + 59)) {
         display.setTextSize(4);
     
@@ -107,7 +107,7 @@ void drawStopwatch() {
     }
 
 
-    //Draw the hours counter
+    //Draw the hours counter if OVER 
     if (stopwatchTime > ((59 * 60) + 59)) {
         display.setTextSize(3);
     
@@ -160,17 +160,23 @@ void loop() {
     serialInput();
     
     //Select screen based on app index
-    if (app == 0) {
+    switch (app) {
+    case 0:
         drawClock();
-    }
-    if (app == 1) {
+        break;
+    case 1:
         drawMenu();
-    }
-    if (app == 2) {
+        break;
+    case 2:
         drawStopwatch();
+        break;
+    
+    default:
+        Serial.println("Bad app selection!");
+        //This is bad lol
+        break;
     }
-
-
+    
     //Refresh the display
     display.display();
 }
