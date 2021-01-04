@@ -12,8 +12,9 @@
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-int app = 0; //Defaults to 0 for clock
-int stopwatchTime = 3200;
+int app = -1; // Defaults to -1 for Menu
+int stopwatchTime = 3200; // Stopwatch time elapsed
+int select = 1; // Defaults to 1 for Stopwatch
 
 // Button values per button:
 // Up = 2, Down = 4, Enter = 8, Escape = 16
@@ -25,17 +26,20 @@ int pinDown = 9;
 int pinEnter = 8;
 int pinEscape = 7;
 
-String tempString = "sample";
+String tempString = "sample"; // Used for serial monitor input
 
 void setup() {
     Serial.begin(9600);
     Wire.begin();
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
     
-    Serial.println("Setup done.");
+    Serial.println("Setup done!"); // Redundant but fun :)
 }
 
 void drawClock() {
+    if (btnPressed == 16) // Return to menu on ESC
+        app = -1;
+    
     // Clear the display 
     display.clearDisplay();
 
@@ -67,22 +71,47 @@ void drawClock() {
 }
 
 void drawMenu() {
+    // Setup string array for menu list
+    const char *menu[5] = {"Back", "Timer", "Alarm", "Stopwatch", "Counter"};
+    
+    // Prepare for input
+    if (btnPressed == 2) // Move selection up
+        select = select - 1;
+
+    if (btnPressed == 4) // Move selection down
+        select = select + 1;
+    
+    if (btnPressed == 8) // Switch to selected app
+        app = select;
+     
+     if (btnPressed == 16) // Return to clock from menu
+        app = 0;       
+    
     display.clearDisplay();
 
-    //Draw the title
+    // Draw the title
     display.setTextSize(2);
     display.setTextColor(WHITE);
     display.setCursor(10,0);
     display.println("Main Menu");
     
-    //Draw the options
-    display.println(" > Timer <");
-    display.println("   Alarm");
-    display.println(" Stopwatch");
-    //display.println("> Counter");
+    // Draw three lines of text
+    for (int i = 1; i < 4; i++) {
+        //Serial.println(i);
+        if (i == select) { // Highlight the selected option
+            display.setTextColor(BLACK, WHITE);
+            display.println(menu[i]);
+            display.setTextColor(WHITE, BLACK);
+        }
+        else
+        display.println(menu[i]);    
+    }
 }
 
 void drawStopwatch() {
+    if (btnPressed == 16) // Return to menu on ESC
+        app = -1;
+    
     display.clearDisplay();
 
     //Draw the title
@@ -91,8 +120,7 @@ void drawStopwatch() {
     display.setCursor(10,0);
     display.println("Stopwatch");
     
-    //Draw the minites counter if LESS than 5599 seconds have gone by
-    if (stopwatchTime < ((59 * 60) + 59)) {
+    if (stopwatchTime < ((59 * 60) + 59)) { // Draw the minites counter if LESS than 5599 seconds have gone by
         display.setTextSize(4);
     
         display.setCursor(12,18);
@@ -106,9 +134,7 @@ void drawStopwatch() {
         //display.print("mm:ss");
     }
 
-
-    //Draw the hours counter if OVER 
-    if (stopwatchTime > ((59 * 60) + 59)) {
+    if (stopwatchTime > ((59 * 60) + 59)) { //Draw the hours counter if OVER 
         display.setTextSize(3);
     
         display.setCursor(0,25);
@@ -128,7 +154,7 @@ void drawStopwatch() {
         //display.print(" hr:mm:ss");
     } 
 
-    //Draw the menu options
+    // Draw the menu options
     display.setTextSize(2);
     display.setCursor((128-(6 * 9 * 2))/2,64/8*6 + 2);
     display.print("> Start <");
@@ -139,13 +165,21 @@ void serialInput() {
     if (Serial.available() > 0) {
         tempString = Serial.readString();
         
-        if (tempString == "up") {
+        if (tempString == "w") { // Emulated "UP" key
             Serial.println(tempString);
-
+            btnPressed = 2;
         }
-        else {
-            app = tempString.toInt();
-            Serial.println(app);
+        if (tempString == "s") { // Emulated "DOWN" key
+            Serial.println(tempString);
+            btnPressed = 4;
+        }
+        if (tempString == "e") { // Emulated "ENTER" key
+            Serial.println(tempString);
+            btnPressed = 8;
+        }
+        if (tempString == "q") { // Emulated "ESCAPE" key
+            Serial.println(tempString);
+            btnPressed = 16;
         }
     }
 }
@@ -156,27 +190,39 @@ void buttonInput() {
 }
 
 void loop() {
-    //Check for serial input as means of simulating button presses
-    serialInput();
+    delay(250); // Delay to avoid serial spam
     
-    //Select screen based on app index
-    switch (app) {
+    serialInput(); // Check for serial input as means of simulating button presses
+    
+    switch (app) { // Select screen based on app index
+    case -1:
+        drawMenu();
+        break;
     case 0:
         drawClock();
         break;
     case 1:
-        drawMenu();
+        Serial.println("Not yet implimented...");
+        app = -1;
         break;
     case 2:
+        Serial.println("Not yet implimented...");
+        app = -1;
+        break;
+    case 3:
         drawStopwatch();
         break;
     
     default:
-        Serial.println("Bad app selection!");
-        //This is bad lol
+        Serial.println("Bad app selection!"); // This is bad lol
         break;
     }
-    
-    //Refresh the display
-    display.display();
+    // Some debug shit
+    //Serial.print("Button: ");
+    //Serial.println(btnPressed);
+    //Serial.print("Selection: ");
+    //Serial.println(select);
+
+    btnPressed = 0; // Reset button state  
+    display.display(); //Refresh the display
 }
