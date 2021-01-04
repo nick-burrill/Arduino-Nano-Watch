@@ -12,8 +12,11 @@
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-int app = -1; // Defaults to -1 for Menu
-int stopwatchTime = 3200; // Stopwatch time elapsed
+int app = 0; // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter
+float stopwatchTime = 0; // Stopwatch time elapsed
+bool stopWtch = 0;
+bool stopwatchMode = 1; // True = secconds, False = millisecconds
+int stopwchInt = 0;
 int select = 1; // Defaults to 1 for Stopwatch
 
 // Button values per button:
@@ -49,7 +52,7 @@ void drawClock() {
     //Draw Date
     display.setTextSize(2);
     display.setCursor(8,0);
-    display.print("Wed Dec 3");
+    display.print("Wed Dec 30");
     
     //Draw Clock
     display.setCursor(0,18);
@@ -109,55 +112,98 @@ void drawMenu() {
 }
 
 void drawStopwatch() {
+    stopwchInt = round(stopwatchTime);
+    if (btnPressed == 8) // Toggle stopwatch
+        stopWtch = !stopWtch;
+    
+    if (stopWtch) { // Add 0.25 secconds to time (based on 250ms delay in void loop())
+        stopwatchTime = stopwatchTime + 0.25;
+    }
+    
     if (btnPressed == 16) // Return to menu on ESC
         app = -1;
     
     display.clearDisplay();
 
-    //Draw the title
+    // Draw the title
     display.setTextSize(2);
     display.setTextColor(WHITE);
     display.setCursor(10,0);
     display.println("Stopwatch");
     
-    if (stopwatchTime < ((59 * 60) + 59)) { // Draw the minites counter if LESS than 5599 seconds have gone by
+    if (stopwatchMode) { // Two counters mode
+        if (stopwatchTime > 5097600) // Switch to three counters mode if hours
+            stopWtch = !stopWtch;
+
         display.setTextSize(4);
     
         display.setCursor(12,18);
-        display.print("00");
+        if (stopwchInt/60 <= 9) { // If less than ten minutes print 0 before ones digit
+                display.print("0");
+                display.setCursor(36,18);
+                display.print(stopwchInt/60);
+        }
+        else
+            display.print(stopwchInt / 60); // Over ten minutes, print both digits
     
         display.setCursor(12+40,18);
         display.print(":");
     
         display.setCursor(12+ 56,18);
-        display.print("00");
+        if (stopwchInt % 60 < 10) {
+            display.print("0");
+            display.setCursor(12+56+24,18);
+            display.print(stopwchInt % 60);
+        }
+        else
+        display.print(stopwchInt%60);
         //display.print("mm:ss");
+        
     }
 
-    if (stopwatchTime > ((59 * 60) + 59)) { //Draw the hours counter if OVER 
+    if (!stopwatchMode) { // Three counters mode
         display.setTextSize(3);
+        if (stopwatchTime < 5097600) { // Minutes counter when no hours  
+            display.setCursor(0,25);
+            if (stopwchInt <= 9) {
+            display.print("0");
+            display.setCursor(15,25);
+            display.print(stopwchInt / 60);
+            }
+            else {
+                display.setCursor(0,25);
+                display.print(stopwchInt / 60);
+            }
+        }
+        else {
+            display.setCursor(0,25);
+            display.print("0");
+            display.setCursor(0,15);
+            display.print(stopwchInt / 3600);
+        }
     
-        display.setCursor(0,25);
-        display.print("00");
+            display.setCursor(30,25);
+            display.print(":");
     
-        display.setCursor(30,25);
-        display.print(":");
+            display.setCursor(42,25);
+            display.print("stopwatch");
     
-        display.setCursor(42,25);
-        display.print("00");
+            display.setCursor(72,25);
+            display.print(":");
     
-        display.setCursor(72,25);
-        display.print(":");
-    
-        display.setCursor(84,25);
-        display.print("00");
-        //display.print(" hr:mm:ss");
+            display.setCursor(84,25);
+            display.print("00");
+            //display.print(" hr:mm:ss");
+        
     } 
 
     // Draw the menu options
     display.setTextSize(2);
     display.setCursor((128-(6 * 9 * 2))/2,64/8*6 + 2);
-    display.print("> Start <");
+    if (stopWtch)
+        display.print("> Pause <");
+    if (!stopWtch)
+        display.print("> Start <");
 
 }
 
