@@ -1,3 +1,4 @@
+// Jan 5th 2021, RAM: [====      ]  35.5% (used 727 bytes from 2048 bytes), Flash: [======    ]  58.2% (used 17892 bytes from 30720 bytes)
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -12,12 +13,20 @@
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-int app = 0; // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter
-float stopwatchTime = 0; // Stopwatch time elapsed
-bool stopWtch = 0;
-bool stopwatchMode = 1; // True = secconds, False = millisecconds
-int stopwchInt = 0;
+int app = 0; // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter      default = 0
+unsigned long stopwatchTime = 0; // Stopwatch time elapsed in millisecconds     default = 0
+bool stopwatchState = 0; // True = stopwatch running, False = stopwatch paused
+bool stopwatchMode = 0; // True = Double counter, False = tripple counter
 int select = 1; // Defaults to 1 for Stopwatch
+int stopwatchMili = 0; // Easily readible milisecconds counter
+int stopwatchSec = 0; // Easiliy readable secconds counter
+int stopwatchMin = 0; // Easily readable minutes counter
+int stopwatchHours = 0;
+int stopwatchPrint = 0; // Preassigned value to be printed
+
+int tick = 250; // Delay in main loop
+unsigned long timeNow = 0;
+
 
 // Button values per button:
 // Up = 2, Down = 4, Enter = 8, Escape = 16
@@ -112,16 +121,39 @@ void drawMenu() {
 }
 
 void drawStopwatch() {
-    stopwchInt = round(stopwatchTime);
-    if (btnPressed == 8) // Toggle stopwatch
-        stopWtch = !stopWtch;
-    
-    if (stopWtch) { // Add 0.25 secconds to time (based on 250ms delay in void loop())
-        stopwatchTime = stopwatchTime + 0.25;
+    if (btnPressed == 8) { // Toggle stopwatch
+        stopwatchState = !stopwatchState;
     }
-    
-    if (btnPressed == 16) // Return to menu on ESC
+    if (stopwatchState) { // Add tick to time. This is temp
+        stopwatchTime = stopwatchTime + tick;
+        stopwatchMili = stopwatchTime % 1000 / 10; 
+        stopwatchSec = stopwatchTime / 1000 % 60; 
+        stopwatchHours = stopwatchTime / 3600000;
+        stopwatchMin = stopwatchTime / 60000 - stopwatchHours * 60;
+
+        /*Serial diagnostics
+        //Serial.print("Mili: ");
+        //Serial.println(stopwatchMili);
+        
+        if (stopwatchMili == 0) {
+            
+            Serial.print("Total: ");
+            Serial.println(stopwatchTime);
+            
+            Serial.print("Sec: ");
+            Serial.println(stopwatchSec);
+            Serial.print("Min: ");
+            Serial.println(stopwatchMin);
+            Serial.print("Hour: ");
+            Serial.println(stopwatchHours);
+            Serial.println("-------------");
+        } */
+        
+
+    }
+    if (btnPressed == 16) { // Return to menu on ESC
         app = -1;
+    }
     
     display.clearDisplay();
 
@@ -132,77 +164,103 @@ void drawStopwatch() {
     display.println("Stopwatch");
     
     if (stopwatchMode) { // Two counters mode
-        if (stopwatchTime > 5097600) // Switch to three counters mode if hours
-            stopWtch = !stopWtch;
+        if (stopwatchHours >= 1) { // Switch to three counters mode if hours
+            display.clearDisplay();
+            stopwatchMode = !stopwatchMode;
+        }
 
         display.setTextSize(4);
     
         display.setCursor(12,18);
-        if (stopwchInt/60 <= 9) { // If less than ten minutes print 0 before ones digit
+        if (stopwatchMin <= 9) { // If less than ten minutes print 0 before ones digit
                 display.print("0");
                 display.setCursor(36,18);
-                display.print(stopwchInt/60);
+                display.print(stopwatchMin);
         }
         else
-            display.print(stopwchInt / 60); // Over ten minutes, print both digits
+            display.print(stopwatchMin); // Over ten minutes, print both digits
     
         display.setCursor(12+40,18);
         display.print(":");
     
         display.setCursor(12+ 56,18);
-        if (stopwchInt % 60 < 10) {
+        if (stopwatchSec < 10) {
             display.print("0");
             display.setCursor(12+56+24,18);
-            display.print(stopwchInt % 60);
+            display.print(stopwatchSec);
         }
-        else
-        display.print(stopwchInt%60);
+        else {
+            display.print(stopwatchSec);
+        }
         //display.print("mm:ss");
         
     }
 
     if (!stopwatchMode) { // Three counters mode
         display.setTextSize(3);
-        if (stopwatchTime < 5097600) { // Minutes counter when no hours  
-            display.setCursor(0,25);
-            if (stopwchInt <= 9) {
+        
+        display.setCursor(0,25); // Prepare to draw first (hours / minutes) counter
+        if (stopwatchHours < 1) { // Minutes counter when no hours
+            stopwatchPrint = stopwatchMin; // Set print to hours
+        }
+        else { // Hours counter when hours
+            stopwatchPrint = stopwatchHours; // Set print to hours
+        }
+        if (stopwatchPrint <= 9) { // If less than 10 units add 0
             display.print("0");
-            display.setCursor(15,25);
-            display.print(stopwchInt / 60);
-            }
-            else {
-                display.setCursor(0,25);
-                display.print(stopwchInt / 60);
-            }
+            display.setCursor(19,25);
+            display.print(stopwatchPrint);
+        }
+        else { // If over ten units just print
+            display.print(stopwatchPrint);
+        }
+        
+        display.setCursor(30,25); // First colon
+        display.print(":");
+    
+        display.setCursor(42,25); // Prepare to draw minutes / seconds counter
+        if (stopwatchHours < 1) { // Secconds counter when no hours
+            stopwatchPrint = stopwatchSec;
+        }
+        else { // Minutes counter when hours
+            stopwatchPrint = stopwatchMin;
+        }
+        if (stopwatchPrint < 10) { // If less than 10 units print 0 
+            display.print("0");
+            display.setCursor(60,25);
+            display.print(stopwatchPrint);
+        }
+        else { // If over 10 secconds just print both digits
+            display.print(stopwatchPrint);
+        }
+
+        display.setCursor(72,25); // Second colon
+        display.print(":");
+        
+        display.setCursor(84,25); // Prepare to draw seconds / milliseconds counter
+        if (stopwatchHours < 1) { // If no hours print mili seconds
+            stopwatchPrint = stopwatchMili;
         }
         else {
-            display.setCursor(0,25);
-            display.print("0");
-            display.setCursor(0,15);
-            display.print(stopwchInt / 3600);
+            stopwatchPrint = stopwatchSec;// If hours set to secconds
         }
-    
-            display.setCursor(30,25);
-            display.print(":");
-    
-            display.setCursor(42,25);
-            display.print("stopwatch");
-    
-            display.setCursor(72,25);
-            display.print(":");
-    
-            display.setCursor(84,25);
-            display.print("00");
-            //display.print(" hr:mm:ss");
+        if (stopwatchPrint < 10) { // If less than 10 units print 0 
+            display.print("0");
+            display.setCursor(84 + 18, 25);
+            display.print(stopwatchPrint);
+        }
+        else { // Otherwise just print both digits
+            display.print(stopwatchPrint);
+        }
         
     } 
 
     // Draw the menu options
     display.setTextSize(2);
     display.setCursor((128-(6 * 9 * 2))/2,64/8*6 + 2);
-    if (stopWtch)
+    if (stopwatchState)
         display.print("> Pause <");
-    if (!stopWtch)
+    if (!stopwatchState)
         display.print("> Start <");
 
 }
@@ -236,8 +294,14 @@ void buttonInput() {
 }
 
 void loop() {
-    delay(250); // Delay to avoid serial spam
+    //delay(tick); // Delay to avoid serial spam
+    timeNow = millis();
     
+    while(millis() < timeNow + tick){
+        //wait approx. [period] ms
+    }
+
+
     serialInput(); // Check for serial input as means of simulating button presses
     
     switch (app) { // Select screen based on app index
