@@ -1,4 +1,4 @@
-// Jan 5th 2021, RAM: [====      ]  35.5% (used 727 bytes from 2048 bytes), Flash: [======    ]  58.2% (used 17892 bytes from 30720 bytes)
+// Jan 13th 2021, RAM: [====      ]  40.8% (used 835 bytes from 2048 bytes) Flash: [======    ]  61.3% (used 18846 bytes from 30720 bytes)
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
