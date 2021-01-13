@@ -6,3 +6,7 @@ Here are some planned specs:
 -Timer
 -Alarm
 -Counter
+
+Some system level goodies:
+-System wide drawing functions for basic UI elements like titles, time input, and time display
+-Multibutton input

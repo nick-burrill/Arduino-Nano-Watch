@@ -13,72 +13,178 @@
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-int app = 0; // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter      default = 0
+// System
+int app = 3; // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter      default = 0
+int tick = 100; // Delay in main loop
+unsigned long timeOld = 0; // Used to derive how long things have taken
+bool drawnYet = false;
+int refreshRate = 0;
+//String tempString = "sample"; // Used for serial monitor input
+
+// Stopwatch
 unsigned long stopwatchTime = 0; // Stopwatch time elapsed in millisecconds     default = 0
+unsigned long stopwatchStart = 0;
 bool stopwatchState = 0; // True = stopwatch running, False = stopwatch paused
 bool stopwatchMode = 0; // True = Double counter, False = tripple counter
 int select = 1; // Defaults to 1 for Stopwatch
 int stopwatchMili = 0; // Easily readible milisecconds counter
 int stopwatchSec = 0; // Easiliy readable secconds counter
 int stopwatchMin = 0; // Easily readable minutes counter
-int stopwatchHours = 0;
-int stopwatchPrint = 0; // Preassigned value to be printed
+int stopwatchHours = 0; // Easily readable minutes counter
 
-int tick = 250; // Delay in main loop
-unsigned long timeNow = 0;
+// Clock
+bool am = true; // AM = True, PM = False
 
-
-// Button values per button:
-// Up = 2, Down = 4, Enter = 8, Escape = 16
-int btnPressed = 0;
-// Add respective value for reach button to be pressed
+// INPUT
+int btnPressed = 0; // Up = 2, Down = 4, Enter = 8, Escape = 16
 // Button pins will be set here aswell
-int pinUp = 10;
-int pinDown = 9;
-int pinEnter = 8;
-int pinEscape = 7;
+int pinUp = 5;
+int pinDown = 8;
+int pinEnter = 6;
+int pinEscape = 9;
+// Time slector
+int setSec = 0;   
+int setMin = 0;
+int setHour = 0;
+int currentValue = 0; // 0 = hr, 1 = min, 2 = secconds
+int editedValue = 0; 
 
-String tempString = "sample"; // Used for serial monitor input
+// Counter Function
+int slot1old = -1;
+int slot2old = -1;
+int slot3old = -1;
+
+const unsigned char letterP [] PROGMEM = { // 'p', 9x9px
+	0x7f, 0x00, 0xff, 0x80, 0xc1, 0x80, 0xc1, 0x80, 0xff, 0x80, 0xff, 0x00, 0xc0, 0x00, 0xc0, 0x00, 
+	0xc0, 0x00
+};
+
+const unsigned char letterM [] PROGMEM = { // 'm', 9x9px
+	0x80, 0x80, 0xc1, 0x80, 0xe3, 0x80, 0xf7, 0x80, 0xdd, 0x80, 0xc9, 0x80, 0xc1, 0x80, 0xc1, 0x80, 
+	0xc1, 0x80
+};
 
 void setup() {
     Serial.begin(9600);
     Wire.begin();
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+
+    display.clearDisplay();
+
+    pinMode(pinUp, INPUT);
+    pinMode(pinDown, INPUT);
+    pinMode(pinEnter, INPUT);
+    pinMode(pinEscape, INPUT);
     
-    Serial.println("Setup done!"); // Redundant but fun :)
+    Serial.print("Setup done! Took: "); // Redundant but fun :)
+    Serial.println(millis()); // Boot Time: 41ms
+}
+
+void drawTitle(String title) {
+    if (drawnYet == false) {
+        display.clearDisplay();
+        display.setTextColor(WHITE, BLACK);
+        display.setCursor((title.length()*8)-(SCREEN_WIDTH/2)+2,0); // centering doesnt work for clock yet
+        display.setTextSize(2);
+        display.setTextWrap(false);
+        display.println(title);
+        //drawnYet = true;
+    }
+}
+
+void drawCounter(int slot1, int slot2, int slot3, int highlight) { 
+    if (slot1 != slot1old) {
+        //update slot1 if value has changed
+        if (highlight == 1) { display.setTextColor(BLACK, WHITE); } // Highlight if selected
+        else { display.setTextColor(WHITE, BLACK); }
+        if (slot1 < 10) { // If less than 10, draw 0 before it
+            display.setCursor(2,22);
+            display.print("0");
+            display.setCursor(21,22);
+            display.print(slot1);
+        }
+        else {
+            display.setCursor(2,22);
+            display.print(setHour);
+        }
+    }
+
+    if (slot2 != slot2old) {
+        //update slot2 if value has changed
+        if (highlight == 2) { display.setTextColor(BLACK, WHITE); } // Highlight if selected
+        else { display.setTextColor(WHITE, BLACK); }
+        if (slot2 < 10) { // If less than 10, draw 0 before it
+            display.setCursor(47,22);
+            display.print("0");
+
+            display.setCursor(66,22);
+            display.print(slot2);
+        }
+        else {
+            display.setCursor(47,22);
+            display.print(slot2);
+        }
+    }
+    if (slot3 != slot3old) {
+        //update slot3 if value has changed
+        if (highlight == 3) { display.setTextColor(BLACK, WHITE); } // Highlight if selected
+        else { display.setTextColor(WHITE, BLACK); }
+        if (slot3 < 10) { // If less than 10, draw 0 before it
+            display.setCursor(92,22);
+            display.print("0");
+            display.setCursor(111,22);
+            display.print(slot3);
+        }
+        else {
+            display.setCursor(92,22);
+            display.print(slot3);
+        }
+    }
+    display.setTextColor(WHITE);
+    if ((slot1 != slot1old) or (slot2 != slot2old)) { // Check if inbetween slot1 and slot2 has been drawn over
+        // Draw colons
+        display.setCursor(34,22);
+        display.print(":");
+    }
+    if ((slot2 != slot2old) or (slot3 != slot3old)) { // Check if inbetween slot2 and slot3 has been drawn over
+        // Seccond colon
+        display.setCursor(79,22);
+        display.print(":");
+    } 
+
 }
 
 void drawClock() {
     if (btnPressed == 16) // Return to menu on ESC
         app = -1;
     
-    // Clear the display 
-    display.clearDisplay();
-
-    //Set the color - always use white despite actual display color
-    display.setTextColor(WHITE);
- 
-    //Draw Date
-    display.setTextSize(2);
-    display.setCursor(8,0);
-    display.print("Wed Dec 30");
+    drawTitle("Wed Dec 32");
     
     //Draw Clock
-    display.setCursor(0,18);
+    display.setCursor(-5,18);
     display.setTextSize(5);
-    display.print("8:30");
+    display.print("1");
+
+    display.setCursor(20,18);
+    display.print("2");
+    
+    display.setCursor(40,18);
+    display.print(":");
+
+    display.setCursor(60,18);
+    display.print("45");
 
     //Draw PM / AM
-    display.setCursor(120,27);
-    display.setTextSize(1);
-    display.print("P");
-    display.setCursor(120,36);
-    display.print("M");
+    display.drawBitmap(117, 25,letterP, 9, 9, 1);
+    display.drawBitmap(117, 37,letterM, 9, 9, 1);
+    if (am == true) {
+        display.drawRect(124,30,2,4,1); 
+    }
      
     //Draw Serial Status   
     display.setTextSize(1);
     display.setCursor(0,56);
-    display.print("Serial: ");
+    display.print("Sunset in 4hr 30m");
 
 }
 
@@ -99,15 +205,11 @@ void drawMenu() {
      if (btnPressed == 16) // Return to clock from menu
         app = 0;       
     
-    display.clearDisplay();
-
-    // Draw the title
-    display.setTextSize(2);
-    display.setTextColor(WHITE);
-    display.setCursor(10,0);
-    display.println("Main Menu");
+    drawTitle("Main Menu");
     
     // Draw three lines of text
+    display.setTextSize(2);
+    display.setCursor(0,16);
     for (int i = 1; i < 4; i++) {
         //Serial.println(i);
         if (i == select) { // Highlight the selected option
@@ -120,22 +222,128 @@ void drawMenu() {
     }
 }
 
+void drawTimeSet() {
+
+    drawTitle("Set time:");
+
+    switch (btnPressed) { // Button input
+    case 2:
+        editedValue = editedValue + 1;
+        break;
+    case 4:
+        editedValue = editedValue - 1;
+        break;
+    case 8:
+        currentValue = currentValue + 1;
+        break;
+    case 16:
+        currentValue = currentValue - 1;
+        break;
+    default:
+        break;
+    }
+
+    
+    switch (currentValue) { // Cursor movement
+    case -1:
+        Serial.println("Canceled time selection");
+        app = -1;
+        drawnYet = false;
+        break;
+    case 0:
+        setHour = editedValue;
+        break;
+    case 1:
+        setMin = editedValue;
+        break;
+    case 2:
+        setSec = editedValue;
+        break;
+    case 3:
+        Serial.println("Submit/Cancel time");
+        app = -1;
+        drawnYet = false;
+    default:
+        break;
+    }
+
+    display.setTextSize(3); // make mf big big big big big
+    
+    // First colon
+    display.setCursor(34,22);
+    display.print(":");
+    // Seccond colon
+    display.setCursor(79,22);
+    display.print(":");
+    
+    // Draw Hours
+    if (currentValue == 0) { display.setTextColor(BLACK, WHITE); }
+    else { display.setTextColor(WHITE, BLACK); }
+    if (setHour < 10) {
+        display.setCursor(2,22);
+        display.print("0");
+        display.setCursor(21,22);
+        display.print(setHour);
+    }
+    else {
+        display.setCursor(2,22);
+        display.print(setHour);
+    }
+
+    // Draw Minutes
+    if (currentValue == 1) { display.setTextColor(BLACK, WHITE); }
+    else { display.setTextColor(WHITE, BLACK); }
+    if (setMin < 10) {
+        display.setCursor(47,22);
+        display.print("0");
+
+        display.setCursor(66,22);
+        display.print(setMin);
+    }
+    else {
+        display.setCursor(47,22);
+        display.print(setMin);
+    }
+    
+    // Draw Secconds
+    if (currentValue == 2) { display.setTextColor(BLACK, WHITE); }
+    else { display.setTextColor(WHITE, BLACK); }
+    if (setSec < 10) {
+        display.setCursor(92,22);
+        display.print("0");
+
+        display.setCursor(111,22);
+        display.print(setSec);
+    }
+    else {
+        display.setCursor(92,22);
+        display.print("0");
+    }
+    
+
+    display.setCursor(0,48);
+    display.setTextSize(2);
+    display.print(">Submit");
+
+}
+
 void drawStopwatch() {
     if (btnPressed == 8) { // Toggle stopwatch
+        if (stopwatchState == 0); { stopwatchStart = millis(); } 
         stopwatchState = !stopwatchState;
     }
     if (stopwatchState) { // Add tick to time. This is temp
-        stopwatchTime = stopwatchTime + tick;
+        stopwatchTime = millis() - stopwatchStart;
         stopwatchMili = stopwatchTime % 1000 / 10; 
         stopwatchSec = stopwatchTime / 1000 % 60; 
         stopwatchHours = stopwatchTime / 3600000;
         stopwatchMin = stopwatchTime / 60000 - stopwatchHours * 60;
 
-        /*Serial diagnostics
+        /*Serial diagnostics*/
         //Serial.print("Mili: ");
         //Serial.println(stopwatchMili);
         
-        if (stopwatchMili == 0) {
+        if (stopwatchMili > 90) {
             
             Serial.print("Total: ");
             Serial.println(stopwatchTime);
@@ -147,125 +355,40 @@ void drawStopwatch() {
             Serial.print("Hour: ");
             Serial.println(stopwatchHours);
             Serial.println("-------------");
-        } */
-        
-
+        } 
     }
+    
     if (btnPressed == 16) { // Return to menu on ESC
         app = -1;
     }
     
-    display.clearDisplay();
+    drawTitle("Stopwatch");
+    
+    // Three counters mode
+    display.setTextSize(3);
 
-    // Draw the title
-    display.setTextSize(2);
-    display.setTextColor(WHITE);
-    display.setCursor(10,0);
-    display.println("Stopwatch");
-    
-    if (stopwatchMode) { // Two counters mode
-        if (stopwatchHours >= 1) { // Switch to three counters mode if hours
-            display.clearDisplay();
-            stopwatchMode = !stopwatchMode;
-        }
-
-        display.setTextSize(4);
-    
-        display.setCursor(12,18);
-        if (stopwatchMin <= 9) { // If less than ten minutes print 0 before ones digit
-                display.print("0");
-                display.setCursor(36,18);
-                display.print(stopwatchMin);
-        }
-        else
-            display.print(stopwatchMin); // Over ten minutes, print both digits
-    
-        display.setCursor(12+40,18);
-        display.print(":");
-    
-        display.setCursor(12+ 56,18);
-        if (stopwatchSec < 10) {
-            display.print("0");
-            display.setCursor(12+56+24,18);
-            display.print(stopwatchSec);
-        }
-        else {
-            display.print(stopwatchSec);
-        }
-        //display.print("mm:ss");
-        
+    if (stopwatchHours < 1) { // Draw min:sec:mili
+        drawCounter(stopwatchMin, stopwatchSec, stopwatchMili, 0);
+    }
+    else { // Draw hour:min:sec
+        drawCounter(stopwatchHours, stopwatchMin, stopwatchSec, 0);
     }
 
-    if (!stopwatchMode) { // Three counters mode
-        display.setTextSize(3);
-        
-        display.setCursor(0,25); // Prepare to draw first (hours / minutes) counter
-        if (stopwatchHours < 1) { // Minutes counter when no hours
-            stopwatchPrint = stopwatchMin; // Set print to hours
-        }
-        else { // Hours counter when hours
-            stopwatchPrint = stopwatchHours; // Set print to hours
-        }
-        if (stopwatchPrint <= 9) { // If less than 10 units add 0
-            display.print("0");
-            display.setCursor(19,25);
-            display.print(stopwatchPrint);
-        }
-        else { // If over ten units just print
-            display.print(stopwatchPrint);
-        }
-        
-        display.setCursor(30,25); // First colon
-        display.print(":");
-    
-        display.setCursor(42,25); // Prepare to draw minutes / seconds counter
-        if (stopwatchHours < 1) { // Secconds counter when no hours
-            stopwatchPrint = stopwatchSec;
-        }
-        else { // Minutes counter when hours
-            stopwatchPrint = stopwatchMin;
-        }
-        if (stopwatchPrint < 10) { // If less than 10 units print 0 
-            display.print("0");
-            display.setCursor(60,25);
-            display.print(stopwatchPrint);
-        }
-        else { // If over 10 secconds just print both digits
-            display.print(stopwatchPrint);
-        }
 
-        display.setCursor(72,25); // Second colon
-        display.print(":");
-        
-        display.setCursor(84,25); // Prepare to draw seconds / milliseconds counter
-        if (stopwatchHours < 1) { // If no hours print mili seconds
-            stopwatchPrint = stopwatchMili;
-        }
-        else {
-            stopwatchPrint = stopwatchSec;// If hours set to secconds
-        }
-        if (stopwatchPrint < 10) { // If less than 10 units print 0 
-            display.print("0");
-            display.setCursor(84 + 18, 25);
-            display.print(stopwatchPrint);
-        }
-        else { // Otherwise just print both digits
-            display.print(stopwatchPrint);
-        }
-        
-    } 
-
-    // Draw the menu options
-    display.setTextSize(2);
-    display.setCursor((128-(6 * 9 * 2))/2,64/8*6 + 2);
-    if (stopwatchState)
-        display.print("> Pause <");
-    if (!stopwatchState)
-        display.print("> Start <");
+    if (drawnYet == false) {
+        // Draw the menu options
+        display.setTextSize(2);
+        display.setCursor((128-(6 * 9 * 2))/2,64/8*6 + 2);
+        if (stopwatchState)
+            display.print("> Pause <");
+        if (!stopwatchState)
+            display.print("> Start <");
+    }
+    //drawnYet = true;
 
 }
 
-void serialInput() {
+/* void serialInput() {
     if (Serial.available() > 0) {
         tempString = Serial.readString();
         
@@ -286,53 +409,71 @@ void serialInput() {
             btnPressed = 16;
         }
     }
-}
+} */
 
 void buttonInput() {
     // For now this will be activated by void loop but eventually should be a hardware interupt
 
+    
+    if (digitalRead(pinUp) == HIGH) {
+        btnPressed = btnPressed + 2;   
+    }
+    if (digitalRead(pinDown) == HIGH) {
+        btnPressed = btnPressed + 4;   
+    }
+    if (digitalRead(pinEnter) == HIGH) {
+        btnPressed = btnPressed + 8;   
+    }
+    if (digitalRead(pinEscape) == HIGH) {
+        btnPressed = btnPressed + 16;   
+    }
+    if (btnPressed != 0) {
+        Serial.println(btnPressed);
+    }
+
+
 }
 
 void loop() {
-    //delay(tick); // Delay to avoid serial spam
-    timeNow = millis();
+    buttonInput();
+    //serialInput(); // Check for serial input as means of simulating button presses
     
-    while(millis() < timeNow + tick){
-        //wait approx. [period] ms
+    //if (btnPressed != 0) {
+    if ((millis() > timeOld + tick) or (btnPressed != 0)) {
+        switch (app) { // Select screen based on app index
+        case -1:
+            drawMenu();
+            break;
+        case 0:
+            drawClock();
+            break;
+        case 1:
+            drawTimeSet();
+            //Serial.println("Not yet implimented...");
+            //app = -1;
+            break;
+        case 2:
+            Serial.println("Not yet implimented...");
+            app = -1;
+            break;
+        case 3:
+            drawStopwatch();
+            break;
+        default:
+            Serial.println("Bad app selection!"); // This is bad lol
+            break;
+        }
+        // Serial.println(millis()-timeOld-tick); print the response time
+        display.display(); //Refresh the display
+        timeOld = millis();
     }
-
-
-    serialInput(); // Check for serial input as means of simulating button presses
     
-    switch (app) { // Select screen based on app index
-    case -1:
-        drawMenu();
-        break;
-    case 0:
-        drawClock();
-        break;
-    case 1:
-        Serial.println("Not yet implimented...");
-        app = -1;
-        break;
-    case 2:
-        Serial.println("Not yet implimented...");
-        app = -1;
-        break;
-    case 3:
-        drawStopwatch();
-        break;
-    
-    default:
-        Serial.println("Bad app selection!"); // This is bad lol
-        break;
-    }
-    // Some debug shit
-    //Serial.print("Button: ");
-    //Serial.println(btnPressed);
-    //Serial.print("Selection: ");
-    //Serial.println(select);
+    /* Some debug shit
+    Serial.print("Button: ");
+    Serial.println(btnPressed);
+    Serial.print("Selection: ");
+    Serial.println(select); */
 
     btnPressed = 0; // Reset button state  
-    display.display(); //Refresh the display
+
 }
