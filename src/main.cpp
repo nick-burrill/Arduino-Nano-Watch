@@ -1,8 +1,11 @@
 // Jan 13th 2021, RAM: [====      ]  40.8% (used 835 bytes from 2048 bytes) Flash: [======    ]  61.3% (used 18846 bytes from 30720 bytes)
-#include <SPI.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <SPI.h> // Display communications
+#include <Wire.h> // Display communications
+#include <Adafruit_GFX.h> // Graphics library
+#include <Adafruit_SSD1306.h> // Display library
+
+#include <virtuabotixRTC.h> // Clock library
+virtuabotixRTC myRTC(7, 4, 3); // Clock pins
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -13,8 +16,9 @@
 #define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+String clockString;
 // System
-int app = 3; // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter      default = 0
+int app = 0; // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter      default = 0
 int tick = 100; // Delay in main loop
 unsigned long timeOld = 0; // Used to derive how long things have taken
 bool drawnYet = false;
@@ -75,11 +79,11 @@ void drawTitle(String title, bool pos = 0, bool highlight = 0) {
     if (pos == 1) { y = 48; }
     else {display.clearDisplay(); }
     
-    if ((drawnYet == false) or (btnPressed != 0)){
+    if ((drawnYet == false) or (pos == 1) && (btnPressed != 0)){ // Update if not drawn yet or if its a bottom button being pressed. Not good
         //display.clearDisplay();
         if (highlight == 0) { display.setTextColor(WHITE, BLACK); }
         else { display.setTextColor(BLACK, WHITE); }
-        display.setCursor((SCREEN_WIDTH/2)-(title.length()*6),y); // centering doesnt work for clock yet
+        display.setCursor((SCREEN_WIDTH/2)-(title.length()*6),y); // centering doesnt work for clock yet - Are you sure?
         display.setTextSize(2);
         display.setTextWrap(false);
         display.println(title);
@@ -157,8 +161,19 @@ void drawClock() {
     if (btnPressed == 16) // Return to menu on ESC
         app = -1;
     
-    drawTitle("Wed Dec 32");
+    //String str1 = String(myRTC.dayofweek);
+    //String str2 = String(myRTC.month);
+    //String str3 = String(myRTC.year);
+
+    // Serial.println(str1);
+    // Serial.println(str2);
+    // Serial.println(str3);
     
+    // clockString = myRTC.month + '/' + myRTC.dayofmonth + '/' + myRTC.year;
+    //clockString = str1 + "/" + str2 + "/" + str3;
+    drawTitle("Sun Feb 6");
+    //Serial.println(clockString);
+
     display.setCursor(40,18);
     display.print(":");
     
@@ -411,6 +426,7 @@ void buttonInput() {
 }
 
 void loop() {
+    myRTC.updateTime();
     buttonInput();
     //serialInput(); // Check for serial input as means of simulating button presses
     
@@ -449,7 +465,7 @@ void loop() {
     Serial.println(btnPressed);
     Serial.print("Selection: ");
     Serial.println(select); */
-
+    
     btnPressed = 0; // Reset button state  
 
 }
