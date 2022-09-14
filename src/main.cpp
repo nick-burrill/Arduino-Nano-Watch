@@ -1,14 +1,19 @@
-// Jan 13th 2021, RAM: [====      ]  40.8% (used 835 bytes from 2048 bytes) Flash: [======    ]  61.3% (used 18846 bytes from 30720 bytes)
+// Sept 14th 2022, RAM:   [====      ]  39.4% (used 807 bytes from 2048 bytes) Flash: [=======   ]  66.6% (used 20468 bytes from 30720 bytes)
 #include <SPI.h> // Display communications
 #include <Wire.h> // Display communications
 #include <Adafruit_GFX.h> // Graphics library
 #include <Adafruit_SSD1306.h> // Display library
 
-#include <virtuabotixRTC.h> // Clock library
-virtuabotixRTC myRTC(7, 4, 3); // Clock pins
+#include <Arduino.h>
+#include <ThreeWire.h> // RTC Communications
+#include <RtcDS1302.h> // RTC Library
+
+ThreeWire myWire(4,7,3); // IO/DAT, SCLK/CLK, CE/RST
+RtcDS1302<ThreeWire> Rtc(myWire); // Clock pins
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define countof(x) (sizeof(x) / sizeof (x[0]))
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 // The pins for I2C are defined by the Wire-library. 
@@ -16,29 +21,32 @@ virtuabotixRTC myRTC(7, 4, 3); // Clock pins
 #define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-String clockString;
 // System
 int app = 0; // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter      default = 0
 int tick = 100; // Delay in main loop
 unsigned long timeOld = 0; // Used to derive how long things have taken
-bool drawnYet = false;
+// bool drawnYet = false;
 int select = 1; // Menu Selection
 // int refreshRate = 0; UNUSED
 //String tempString = "sample"; // Used for serial monitor input
 
-// INPUT
+bool am = true; // AM = True, PM = False
+char clockString[9]; // character length + 1
+char dateString[11];
+
+// Input
 int btnPressed = 0; // Up = 2, Down = 4, Enter = 8, Escape = 16
 int btnOld;
-// Button pins will be set here aswell
+// Button pins
 int pinUp = 5;
 int pinDown = 8;
 int pinEnter = 6;
 int pinEscape = 9;
-// Time slector
+// Time selector
 int setSec = 0;   
 int setMin = 0;
 int setHour = 0;
-int currentValue = 1; // 1 = hr, 2 = min, 3 = secconds
+int currentValue = 1; // 1 = hr, 2 = min, 3 = sec
 int editedValue = 0; 
 
 bool stopwatchState; // True = stopwatch running, False = stopwatch paused
@@ -58,6 +66,37 @@ const unsigned char letterM [] PROGMEM = { // 'm', 9x9px
 	0xc1, 0x80
 };
 
+void getTimeStrings(const RtcDateTime& dt) // Fetches clockString and dateString from RTC
+{
+    int twelveHour;
+    if (dt.Hour() >= 12) {
+        if (dt.Hour() > 12) {
+            twelveHour = dt.Hour() - 12;
+        }
+        else { twelveHour = dt.Hour(); }
+        am = false;
+    }
+    snprintf_P(clockString, 
+            countof(clockString),
+            PSTR("%02u:%02u:%02u"),
+            // dt.Month(),
+            // dt.Day(),
+            // dt.Year(),
+            twelveHour,
+            dt.Minute(),
+            dt.Second() );
+    snprintf_P(dateString, 
+            countof(dateString),
+            PSTR("%02u/%02u/%02u"),
+            dt.Month(),
+            dt.Day(),
+            dt.Year()
+            // dt.Hour(),
+            // dt.Minute(),
+            // dt.Second() 
+            );
+}
+
 void setup() {
     Serial.begin(9600);
     Wire.begin();
@@ -69,26 +108,29 @@ void setup() {
     pinMode(pinDown, INPUT);
     pinMode(pinEnter, INPUT);
     pinMode(pinEscape, INPUT);
-    
+
+    RtcDateTime now = Rtc.GetDateTime();
+    getTimeStrings(now);
+
+    Serial.println(dateString);
+    Serial.println(clockString);
+
     Serial.print("Setup done! Took: "); // Redundant but fun :)
-    Serial.println(millis()); // Boot Time: 30ms
+    Serial.println(millis()); // Boot Time: 40ms
 }
 
 void drawTitle(String title, bool pos = 0, bool highlight = 0) {
     int y = 0;
     if (pos == 1) { y = 48; }
     else {display.clearDisplay(); }
+    int x = (SCREEN_WIDTH/2)-(title.length()*6); // centering doesnt work for clock yet - Are you sure?
+    display.setCursor(x,y); 
+    display.setTextSize(2);
+    if (highlight == 0) { display.setTextColor(WHITE, BLACK); }
+    else { display.setTextColor(BLACK, WHITE); }
     
-    if ((drawnYet == false) or (pos == 1) && (btnPressed != 0)){ // Update if not drawn yet or if its a bottom button being pressed. Not good
-        //display.clearDisplay();
-        if (highlight == 0) { display.setTextColor(WHITE, BLACK); }
-        else { display.setTextColor(BLACK, WHITE); }
-        display.setCursor((SCREEN_WIDTH/2)-(title.length()*6),y); // centering doesnt work for clock yet - Are you sure?
-        display.setTextSize(2);
-        display.setTextWrap(false);
-        display.println(title);
-        //drawnYet = true;
-    }
+    display.setTextWrap(false);
+    display.print(title);
 }
 
 void drawCounter(int slot1, int slot2, int slot3, int highlight) { 
@@ -156,37 +198,32 @@ void drawCounter(int slot1, int slot2, int slot3, int highlight) {
 
 void drawClock() {
     // Clock
-    bool am = true; // AM = True, PM = False
 
     if (btnPressed == 16) // Return to menu on ESC
         app = -1;
     
-    //String str1 = String(myRTC.dayofweek);
-    //String str2 = String(myRTC.month);
-    //String str3 = String(myRTC.year);
+    RtcDateTime now = Rtc.GetDateTime();
+    getTimeStrings(now);
 
-    // Serial.println(str1);
-    // Serial.println(str2);
-    // Serial.println(str3);
-    
-    // clockString = myRTC.month + '/' + myRTC.dayofmonth + '/' + myRTC.year;
-    //clockString = str1 + "/" + str2 + "/" + str3;
-    drawTitle("Sun Feb 6");
-    //Serial.println(clockString);
+    display.setTextColor(WHITE, BLACK);
+    drawTitle(dateString); // BUG For some reason needs to be printed before time, after color setting, or time will not show up
+
+    //Draw Clock
+    display.setTextSize(5);
+
+    if (clockString[0] != '0') {
+    display.setCursor(-5,18);
+    display.print(clockString[0]); }
 
     display.setCursor(40,18);
     display.print(":");
-    
-    //Draw Clock
-    display.setCursor(-5,18);
-    display.setTextSize(5);
-    display.print("1");
 
     display.setCursor(20,18);
-    display.print("2");
+    display.print(clockString[1]);
 
     display.setCursor(60,18);
-    display.print("45");
+    display.print(clockString[3]);
+    display.print(clockString[4]);
 
     //Draw PM / AM
     display.drawBitmap(117, 25,letterP, 9, 9, 1);
@@ -269,7 +306,7 @@ void drawTimeSet() {
         if ((btnPressed == 16) or (btnPressed == 8)) {
             Serial.println("Canceled time selection");
             app = -1;
-            drawnYet = false;
+            // drawnYet = false;
         }
         break;
     case 1:
@@ -286,7 +323,7 @@ void drawTimeSet() {
         if (btnPressed == 8) {
             Serial.println("Submit/Cancel time");
             app = -1;
-            drawnYet = false;
+            // drawnYet = false;
         }
     default:
         break;
@@ -426,7 +463,7 @@ void buttonInput() {
 }
 
 void loop() {
-    myRTC.updateTime();
+    // myRTC.updateTime();
     buttonInput();
     //serialInput(); // Check for serial input as means of simulating button presses
     
