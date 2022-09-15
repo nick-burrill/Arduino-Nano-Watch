@@ -22,11 +22,12 @@ RtcDS1302<ThreeWire> Rtc(myWire); // Clock pins
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // System
-int app = 0;               // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter      default = 0
-int tick = 100;            // Delay in main loop
+int app = 0;               // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter
+int tick = 30;            // Delay in main loop
 unsigned long timeOld = 0; // Used to derive how long things have taken
 int select = 1;            // Menu Selection
 // String serialInputChar = "z"; // Used for serial monitor input
+bool debug = false; // Bug, enabling debug print statments makes drawTitle() stop working
 
 bool am = true;      // AM = True, PM = False
 char clockString[9]; // hh:mm:ss
@@ -34,7 +35,8 @@ char dateString[11]; // dd/mm/yyyy
 
 // Input
 int btnPressed = 0; // Up = 2, Down = 4, Enter = 8, Escape = 16
-int btnOld;
+int btnReleased;    // Used to interpret button releases
+int btnOld;         // Used to keep track of button strokes between loops
 // Button pins
 int pinUp = 5;
 int pinDown = 8;
@@ -44,7 +46,7 @@ int pinEscape = 9;
 int setSec = 0;
 int setMin = 0;
 int setHour = 0;
-int currentValue = 1; // 1 = hr, 2 = min, 3 = sec
+int currentValue = 1; // Time set scroller position 1 = hr, 2 = min, 3 = sec
 int editedValue = 0;
 
 bool stopwatchState; // True = stopwatch running, False = stopwatch paused
@@ -62,17 +64,19 @@ const unsigned char letterM[] PROGMEM = { // 'M', 9x9px
     0x80, 0x80, 0xc1, 0x80, 0xe3, 0x80, 0xf7, 0x80, 0xdd, 0x80, 0xc9, 0x80, 0xc1, 0x80, 0xc1, 0x80,
     0xc1, 0x80};
 
-void getTimeStrings(const RtcDateTime &dt) // Fetches clockString and dateString from RTC
-{
+void getTimeStrings(const RtcDateTime &dt) { // Fetches clockString and dateString from RTC
+    // 24 to 12hr conversion
     int twelveHour;
-    if (dt.Hour() >= 12) {
-        if (dt.Hour() > 12) {
-            twelveHour = dt.Hour() - 12;
-        } else {
-            twelveHour = dt.Hour();
-        }
+    if (dt.Hour() == 0 && dt.Hour() != 12) {
+        twelveHour = 12;
+        am = true;
+    } else if (dt.Hour() == 12 && dt.Hour() != 0) {
+        twelveHour = 12;
+    } else if (dt.Hour() > 12 && dt.Hour() != 0) {
+        twelveHour = dt.Hour() - 12;
         am = false;
     }
+    // Create time and date string
     snprintf_P(clockString,
                countof(clockString),
                PSTR("%02u:%02u:%02u"),
@@ -203,14 +207,15 @@ void drawCounter(int slot1, int slot2, int slot3, int highlight) {
 
 void drawClock() { // Watch face app
 
-    if (btnPressed == 16) // Return to menu on ESC
+    if (btnReleased == 16) { // Return to menu on ESC
         app = -1;
+    }
 
     RtcDateTime now = Rtc.GetDateTime();
     getTimeStrings(now);
 
-    display.setTextColor(WHITE, BLACK);
     drawTitle(dateString); // BUG For some reason needs to be printed before time, after color setting, or time will not show up
+    display.setTextColor(WHITE, BLACK);
 
     // Draw Clock
     display.setTextSize(5);
@@ -248,18 +253,18 @@ void drawMenu() {
     const char *menu[5] = {"Back", "Timer", "Alarm", "Stopwatch", "Counter"};
 
     // Prepare for input
-    if ((btnPressed == 2) && (select > 0)) { // Move selection up
+    if ((btnReleased == 2) && (select > 0)) { // Move selection up
         select = select - 1;
     }
 
-    if ((btnPressed == 4) && (select < 4)) { // Move selection down
+    if ((btnReleased == 4) && (select < 4)) { // Move selection down
         select = select + 1;
     }
 
-    if (btnPressed == 8) // Switch to selected app
+    if (btnReleased == 8) // Switch to selected app
         app = select;
 
-    if (btnPressed == 16) // Return to clock from menu
+    if (btnReleased == 16) // Return to clock from menu
         app = 0;
 
     drawTitle("Main Menu");
@@ -286,7 +291,7 @@ void drawTimeSet() { // Time set scroller
         drawTitle("Submit", 1, 0);
     }
 
-    switch (btnPressed) { // Button input
+    switch (btnReleased) { // Button input
     case 2:
         editedValue = editedValue + 1;
         break;
@@ -295,7 +300,7 @@ void drawTimeSet() { // Time set scroller
         break;
     case 8:
         currentValue = currentValue + 1;
-        btnPressed = 0;
+        btnReleased = 0; // Huh??
         break;
     case 16:
         currentValue = currentValue - 1;
@@ -307,7 +312,7 @@ void drawTimeSet() { // Time set scroller
     switch (currentValue) { // Cursor movement
     case 0:
         drawTitle("Cancel", 1, 1);
-        if ((btnPressed == 16) or (btnPressed == 8)) {
+        if ((btnReleased == 16) or (btnReleased == 8)) {
             Serial.println("Canceled time selection");
             app = -1;
         }
@@ -323,7 +328,7 @@ void drawTimeSet() { // Time set scroller
         break;
     case 4:
         drawTitle("Submit", 1, 1);
-        if (btnPressed == 8) {
+        if (btnReleased == 8) {
             Serial.println("Submit/Cancel time");
             app = -1;
         }
@@ -344,10 +349,10 @@ void drawStopwatch() { // Stopwatch
     int stopwatchHours; // Easily readable minutes counter
 
     // Input
-    if (btnPressed == 16) { // Return to menu on ESC
+    if (btnReleased == 16) { // Return to menu on ESC
         app = -1;
     }
-    if (btnPressed == 8) { // Toggle stopwatch
+    if (btnReleased == 8) { // Toggle stopwatch
         if (stopwatchState == 0) {
             stopwatchStart = millis();
         }
@@ -431,6 +436,10 @@ void drawStopwatch() { // Stopwatch
 
 void buttonInput() { // Button input processing
     // For now this will be activated by void loop but eventually should be a hardware interrupt
+    btnOld = btnPressed;
+    btnReleased = 0;
+    btnPressed = 0; // Store and initialize button input
+    // Add button values
     if (digitalRead(pinUp) == HIGH) {
         btnPressed = btnPressed + 2;
     }
@@ -443,20 +452,22 @@ void buttonInput() { // Button input processing
     if (digitalRead(pinEscape) == HIGH) {
         btnPressed = btnPressed + 16;
     }
-    if (btnPressed == 0) {
-        btnOld = 0;
-    }
-    if (btnPressed == btnOld) {
-        btnPressed = 0;
-    }
-    if (btnPressed != 0) {
-        btnOld = btnPressed;
 
-        // Serial debug output
-        Serial.print("Button: ");
-        Serial.println(btnPressed);
-        Serial.print("Button old: ");
-        Serial.println(btnOld);
+    // Button released
+    if (btnPressed == 0) {
+        btnReleased = btnOld;
+    }
+
+    // Serial debug output
+    if (debug == true) {
+        if (btnPressed != 0) {
+            Serial.print("Button pressed: ");
+            Serial.println(btnPressed);
+        }
+        if (btnReleased != 0) {
+            Serial.print("Button released: ");
+            Serial.println(btnReleased);
+        }
     }
 }
 
@@ -464,7 +475,7 @@ void loop() {      // Main loop
     buttonInput(); // Get button input
     // serialInput(); // Check for serial input as means of simulating button presses
 
-    if ((millis() > timeOld + tick) or (btnPressed != 0)) {
+    if ((millis() > timeOld + tick) or (btnPressed != 0) or (btnReleased != 0)) {
         switch (app) { // Select screen based on app index
         case -1:
             drawMenu();
@@ -490,6 +501,4 @@ void loop() {      // Main loop
         display.display(); // Refresh the display
         timeOld = millis();
     }
-
-    btnPressed = 0; // Reset button state
 }
