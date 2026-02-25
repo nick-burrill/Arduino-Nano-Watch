@@ -23,6 +23,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // System
 int app = 0;               // -1 = Menu, 0 = Clock, 1 = Alarm, 2 = Timer, 3 = Stopwatch, 4 = Counter
+bool displayDirty = true;  // Used to only refresh the display when something has changed
 int tick = 30;            // Delay in main loop
 unsigned long timeOld = 0; // Used to derive how long things have taken
 int select = 1;            // Menu Selection
@@ -212,6 +213,16 @@ void drawClock() { // Watch face app
     }
 
     RtcDateTime now = Rtc.GetDateTime();
+    static uint8_t lastSec = 99;
+    if (now.Second() != lastSec) {
+        lastSec = now.Second();
+        displayDirty = true;
+    }
+
+    if (!displayDirty) {
+        return;
+    }
+
     getTimeStrings(now);
 
     drawTitle(dateString); // BUG For some reason needs to be printed before time, after color setting, or time will not show up
@@ -249,9 +260,6 @@ void drawClock() { // Watch face app
 }
 
 void drawMenu() {
-    // Setup string array for menu list
-    const char *menu[5] = {"Back", "Timer", "Alarm", "Stopwatch", "Counter"};
-
     // Prepare for input
     if ((btnReleased == 2) && (select > 0)) { // Move selection up
         select = select - 1;
@@ -266,6 +274,13 @@ void drawMenu() {
 
     if (btnReleased == 16) // Return to clock from menu
         app = 0;
+
+    if (!displayDirty) {
+        return;
+    }
+
+    // Setup string array for menu list
+    const char *menu[5] = {"Back", "Timer", "Alarm", "Stopwatch", "Counter"};
 
     drawTitle("Main Menu");
 
@@ -284,6 +299,10 @@ void drawMenu() {
 }
 
 void drawTimeSet() { // Time set scroller
+    if (!displayDirty) {
+        return;
+    }
+
     drawTitle("Set time:");
     if ((setHour == 0) && (setMin == 0) && (setSec == 0)) {
         drawTitle("Cancel", 1, 0);
@@ -357,6 +376,14 @@ void drawStopwatch() { // Stopwatch
             stopwatchStart = millis();
         }
         stopwatchState = !stopwatchState;
+    }
+
+    if (stopwatchState) {
+        displayDirty = true;
+    }
+
+    if (!displayDirty) {
+        return;
     }
 
     if (stopwatchState) { // Add tick to time. This is temp
@@ -476,6 +503,16 @@ void loop() {      // Main loop
     // serialInput(); // Check for serial input as means of simulating button presses
 
     if ((millis() > timeOld + tick) or (btnPressed != 0) or (btnReleased != 0)) {
+        if (btnPressed != 0 || btnReleased != 0) {
+            displayDirty = true;
+        }
+
+        static int lastApp = -2;
+        if (app != lastApp) {
+            displayDirty = true;
+            lastApp = app;
+        }
+
         switch (app) { // Select screen based on app index
         case -1:
             drawMenu();
@@ -497,8 +534,11 @@ void loop() {      // Main loop
             Serial.println("Bad app selection!"); // This is bad lol
             break;
         }
-        // Serial.println(millis()-timeOld-tick); // Print the response time
-        display.display(); // Refresh the display
+
+        if (displayDirty) {
+            display.display(); // Refresh the display
+            displayDirty = false;
+        }
         timeOld = millis();
     }
 }
